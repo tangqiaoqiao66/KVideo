@@ -83,7 +83,7 @@ export function DesktopMoreMenu({
 
     const MenuContent = (
         <div
-            className="absolute z-[9999] bg-[var(--glass-bg)] backdrop-blur-[25px] saturate-[180%] rounded-[var(--radius-2xl)] border border-[var(--glass-border)] shadow-[var(--shadow-md)] p-2 w-fit min-w-[220px] animate-in fade-in zoom-in-95 duration-200"
+            className="absolute z-[9999] bg-[var(--glass-bg)] backdrop-blur-[25px] saturate-[180%] rounded-[var(--radius-2xl)] border border-[var(--glass-border)] shadow-[var(--shadow-md)] p-2 w-fit min-w-[240px] animate-in fade-in zoom-in-95 duration-200"
             style={{
                 top: menuPosition.top,
                 left: menuPosition.left,
@@ -124,7 +124,7 @@ export function DesktopMoreMenu({
             <div className="h-px bg-[var(--glass-border)] my-2" />
 
             {/* Show Mode Indicator Switch */}
-            <div className="px-4 py-2.5 flex items-center justify-between">
+            <div className="px-4 py-2.5 flex items-center justify-between gap-6">
                 <div className="flex items-center gap-3 text-sm text-[var(--text-color)]">
                     <Icons.Zap size={18} />
                     <span>显示模式指示器</span>
@@ -144,7 +144,7 @@ export function DesktopMoreMenu({
             </div>
 
             {/* Ad Filter Mode Selector */}
-            <div className="px-4 py-2.5 flex items-center justify-between">
+            <div className="px-4 py-2.5 flex items-center justify-between gap-6">
                 <div className="flex items-center gap-3 text-sm text-[var(--text-color)]">
                     <Icons.ShieldAlert size={18} />
                     <span>广告过滤</span>
@@ -153,16 +153,16 @@ export function DesktopMoreMenu({
                 <div className="relative">
                     <button
                         onClick={() => setAdFilterOpen(!isAdFilterOpen)}
-                        className="flex items-center gap-1.5 bg-[var(--glass-bg)] border border-[var(--glass-border)] text-[var(--text-color)] text-xs rounded-md px-2.5 py-1.5 outline-none hover:border-[var(--accent-color)] hover:bg-[color-mix(in_srgb,var(--accent-color)_5%,transparent)] transition-all cursor-pointer"
+                        className="flex items-center gap-1.5 bg-[var(--glass-bg)] border border-[var(--glass-border)] text-[var(--text-color)] text-xs rounded-[var(--radius-2xl)] px-2.5 py-1.5 outline-none hover:border-[var(--accent-color)] hover:bg-[color-mix(in_srgb,var(--accent-color)_5%,transparent)] transition-all cursor-pointer"
                     >
                         <span>{AD_FILTER_LABELS[adFilterMode] || '关闭'}</span>
-                        <Icons.ChevronDown size={14} className={`text-[var(--text-color-secondary)] transition-transform duration-200 ${isAdFilterOpen ? 'rotate-180' : ''}`} />
+                        <Icons.ChevronDown size={14} className={`text-[var(--text-color-secondary)] transition-transform duration-300 ${isAdFilterOpen ? 'rotate-180' : ''}`} />
                     </button>
 
                     {isAdFilterOpen && (
                         <>
                             <div className="fixed inset-0 z-10 cursor-default" onClick={() => setAdFilterOpen(false)} />
-                            <div className="absolute right-0 top-full mt-1 w-28 bg-[var(--glass-bg)] backdrop-blur-xl border border-[var(--glass-border)] rounded-lg shadow-xl overflow-hidden z-20 flex flex-col animate-in fade-in zoom-in-95 duration-150">
+                            <div className="absolute right-0 top-full mt-2 w-32 bg-[var(--glass-bg)] backdrop-blur-[25px] saturate-[180%] border border-[var(--glass-border)] rounded-[var(--radius-2xl)] shadow-[var(--shadow-md)] p-1.5 overflow-hidden z-20 flex flex-col animate-in fade-in zoom-in-95 duration-200">
                                 {Object.entries(AD_FILTER_LABELS).map(([mode, label]) => (
                                     <button
                                         key={mode}
@@ -170,7 +170,7 @@ export function DesktopMoreMenu({
                                             setAdFilterMode(mode as AdFilterMode);
                                             setAdFilterOpen(false);
                                         }}
-                                        className={`text-left text-xs px-3 py-2.5 hover:bg-[color-mix(in_srgb,var(--accent-color)_15%,transparent)] transition-colors w-full flex items-center justify-between group ${adFilterMode === mode ? 'text-[var(--accent-color)] font-medium bg-[color-mix(in_srgb,var(--accent-color)_5%,transparent)]' : 'text-[var(--text-color)]'
+                                        className={`text-left text-xs px-3 py-2 rounded-[var(--radius-2xl)] hover:bg-[color-mix(in_srgb,var(--accent-color)_15%,transparent)] transition-colors w-full flex items-center justify-between group ${adFilterMode === mode ? 'text-[var(--accent-color)] font-medium bg-[color-mix(in_srgb,var(--accent-color)_5%,transparent)]' : 'text-[var(--text-color)]'
                                             }`}
                                     >
                                         <span>{label}</span>
