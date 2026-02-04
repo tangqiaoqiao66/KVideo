@@ -183,6 +183,7 @@ export function DesktopVideoPlayer({
             data={data}
             actions={actions}
             showControls={data.showControls}
+            isRotated={shouldForceLandscape}
             onTogglePlay={togglePlay}
             onSkipForward={logic.skipForward}
             onSkipBackward={logic.skipBackward}

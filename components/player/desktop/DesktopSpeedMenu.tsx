@@ -10,6 +10,7 @@ interface DesktopSpeedMenuProps {
     onMouseEnter: () => void;
     onMouseLeave: () => void;
     containerRef: React.RefObject<HTMLDivElement | null>;
+    isRotated?: boolean;
 }
 
 export function DesktopSpeedMenu({
@@ -20,7 +21,8 @@ export function DesktopSpeedMenu({
     onToggleSpeedMenu,
     onMouseEnter,
     onMouseLeave,
-    containerRef
+    containerRef,
+    isRotated = false
 }: DesktopSpeedMenuProps) {
     const buttonRef = React.useRef<HTMLButtonElement>(null);
     const menuRef = React.useRef<HTMLDivElement>(null);
@@ -86,6 +88,18 @@ export function DesktopSpeedMenu({
         }
     }, [containerRef]);
 
+    // When rotated, use direct viewport positioning
+    const calculateRotatedPosition = React.useCallback(() => {
+        if (!buttonRef.current) return;
+        const buttonRect = buttonRef.current.getBoundingClientRect();
+        setMenuPosition({
+            top: buttonRect.bottom + 10,
+            left: buttonRect.right,
+            maxHeight: `${window.innerHeight * 0.6}px`,
+            openUpward: false
+        });
+    }, []);
+
     // Auto-close menu on scroll
     React.useEffect(() => {
         if (!showSpeedMenu) return;
@@ -98,19 +112,31 @@ export function DesktopSpeedMenu({
         return () => window.removeEventListener('scroll', handleScroll);
     }, [showSpeedMenu, onToggleSpeedMenu]);
 
-    // Recalculate position when menu opens
     React.useEffect(() => {
         if (showSpeedMenu) {
-            calculateMenuPosition();
-            // Recalculate after a small delay to get actual menu height
-            const timer = setTimeout(calculateMenuPosition, 50);
+            if (isRotated) {
+                calculateRotatedPosition();
+            } else {
+                calculateMenuPosition();
+            }
+            const timer = setTimeout(() => {
+                if (isRotated) {
+                    calculateRotatedPosition();
+                } else {
+                    calculateMenuPosition();
+                }
+            }, 50);
             return () => clearTimeout(timer);
         }
-    }, [showSpeedMenu, calculateMenuPosition]);
+    }, [showSpeedMenu, calculateMenuPosition, calculateRotatedPosition, isRotated]);
 
     const handleToggle = () => {
         if (!showSpeedMenu) {
-            calculateMenuPosition();
+            if (isRotated) {
+                calculateRotatedPosition();
+            } else {
+                calculateMenuPosition();
+            }
         }
         onToggleSpeedMenu();
     };
@@ -118,16 +144,18 @@ export function DesktopSpeedMenu({
     const MenuContent = (
         <div
             ref={menuRef}
-            className={`absolute z-[9999] bg-[var(--glass-bg)] backdrop-blur-[25px] saturate-[180%] rounded-[var(--radius-2xl)] border border-[var(--glass-border)] shadow-[var(--shadow-md)] p-1 sm:p-1.5 w-fit min-w-[3.5rem] sm:min-w-[4.5rem] animate-in fade-in zoom-in-95 duration-200 overflow-y-auto`}
+            className={`${isRotated ? 'fixed' : 'absolute'} z-[2147483647] bg-[var(--glass-bg)] backdrop-blur-[25px] saturate-[180%] rounded-[var(--radius-2xl)] border border-[var(--glass-border)] shadow-[var(--shadow-md)] p-1 sm:p-1.5 w-fit min-w-[3.5rem] sm:min-w-[4.5rem] animate-in fade-in zoom-in-95 duration-200 overflow-y-auto`}
             style={{
-                top: menuPosition.openUpward ? 'auto' : `${menuPosition.top}px`,
-                bottom: menuPosition.openUpward ? `calc(100% - ${menuPosition.top}px + 10px)` : 'auto',
+                top: isRotated ? `${menuPosition.top}px` : (menuPosition.openUpward ? 'auto' : `${menuPosition.top}px`),
+                bottom: (!isRotated && menuPosition.openUpward) ? `calc(100% - ${menuPosition.top}px + 10px)` : 'auto',
                 left: `${menuPosition.left}px`,
-                transform: 'translateX(-100%)', // Align right edge
-                maxHeight: isFullscreen ? menuPosition.maxHeight : 'none',
+                transform: 'translateX(-100%)',
+                maxHeight: menuPosition.maxHeight,
             }}
             onMouseEnter={onMouseEnter}
             onMouseLeave={onMouseLeave}
+            onClick={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
         >
             {speeds.map((speed) => (
                 <button
@@ -158,7 +186,7 @@ export function DesktopSpeedMenu({
             </button>
 
             {/* Speed Menu (Portal) */}
-            {showSpeedMenu && typeof document !== 'undefined' && createPortal(MenuContent, containerRef.current || document.body)}
+            {showSpeedMenu && typeof document !== 'undefined' && createPortal(MenuContent, isRotated ? document.body : (containerRef.current || document.body))}
         </div>
     );
 }

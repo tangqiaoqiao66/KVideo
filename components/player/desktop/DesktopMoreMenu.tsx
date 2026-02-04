@@ -15,6 +15,7 @@ interface DesktopMoreMenuProps {
     onMouseLeave: () => void;
     onCopyLink: (type?: 'original' | 'proxy') => void;
     containerRef: React.RefObject<HTMLDivElement | null>;
+    isRotated?: boolean;
 }
 
 export function DesktopMoreMenu({
@@ -24,7 +25,8 @@ export function DesktopMoreMenu({
     onMouseEnter,
     onMouseLeave,
     onCopyLink,
-    containerRef
+    containerRef,
+    isRotated = false
 }: DesktopMoreMenuProps) {
     const {
         autoNextEpisode,
@@ -119,6 +121,18 @@ export function DesktopMoreMenu({
         }
     }, [containerRef]);
 
+    // When rotated, use direct viewport positioning
+    const calculateRotatedPosition = React.useCallback(() => {
+        if (!buttonRef.current) return;
+        const buttonRect = buttonRef.current.getBoundingClientRect();
+        setMenuPosition({
+            top: buttonRect.bottom + 10,
+            left: buttonRect.left,
+            maxHeight: `${window.innerHeight * 0.6}px`,
+            openUpward: false
+        });
+    }, []);
+
     // Auto-close menu on scroll
     React.useEffect(() => {
         if (!showMoreMenu) return;
@@ -131,19 +145,31 @@ export function DesktopMoreMenu({
         return () => window.removeEventListener('scroll', handleScroll);
     }, [showMoreMenu, onToggleMoreMenu]);
 
-    // Recalculate position when menu opens
     React.useEffect(() => {
         if (showMoreMenu) {
-            calculateMenuPosition();
-            // Recalculate after a small delay to get actual menu height
-            const timer = setTimeout(calculateMenuPosition, 50);
+            if (isRotated) {
+                calculateRotatedPosition();
+            } else {
+                calculateMenuPosition();
+            }
+            const timer = setTimeout(() => {
+                if (isRotated) {
+                    calculateRotatedPosition();
+                } else {
+                    calculateMenuPosition();
+                }
+            }, 50);
             return () => clearTimeout(timer);
         }
-    }, [showMoreMenu, calculateMenuPosition]);
+    }, [showMoreMenu, calculateMenuPosition, calculateRotatedPosition, isRotated]);
 
     const handleToggle = () => {
         if (!showMoreMenu) {
-            calculateMenuPosition();
+            if (isRotated) {
+                calculateRotatedPosition();
+            } else {
+                calculateMenuPosition();
+            }
         }
         onToggleMoreMenu();
     };
@@ -151,16 +177,17 @@ export function DesktopMoreMenu({
     const MenuContent = (
         <div
             ref={menuRef}
-            className={`absolute z-[9999] bg-[var(--glass-bg)] backdrop-blur-[25px] saturate-[180%] rounded-[var(--radius-2xl)] border border-[var(--glass-border)] shadow-[var(--shadow-md)] p-1.5 sm:p-2 w-fit min-w-[200px] sm:min-w-[240px] animate-in fade-in zoom-in-95 duration-200 overflow-y-auto`}
+            className={`${isRotated ? 'fixed' : 'absolute'} z-[2147483647] bg-[var(--glass-bg)] backdrop-blur-[25px] saturate-[180%] rounded-[var(--radius-2xl)] border border-[var(--glass-border)] shadow-[var(--shadow-md)] p-1.5 sm:p-2 w-fit min-w-[200px] sm:min-w-[240px] animate-in fade-in zoom-in-95 duration-200 overflow-y-auto`}
             style={{
-                top: menuPosition.openUpward ? 'auto' : `${menuPosition.top}px`,
-                bottom: menuPosition.openUpward ? `calc(100% - ${menuPosition.top}px + 10px)` : 'auto',
+                top: isRotated ? `${menuPosition.top}px` : (menuPosition.openUpward ? 'auto' : `${menuPosition.top}px`),
+                bottom: (!isRotated && menuPosition.openUpward) ? `calc(100% - ${menuPosition.top}px + 10px)` : 'auto',
                 left: `${menuPosition.left}px`,
-                maxHeight: isFullscreen ? menuPosition.maxHeight : 'none',
+                maxHeight: menuPosition.maxHeight,
             }}
             onMouseEnter={onMouseEnter}
             onMouseLeave={onMouseLeave}
             onClick={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
         >
             {/* Copy Link Options */}
             {isProxied ? (
@@ -393,7 +420,7 @@ export function DesktopMoreMenu({
             </button>
 
             {/* More Menu Dropdown (Portal) */}
-            {showMoreMenu && typeof document !== 'undefined' && createPortal(MenuContent, containerRef.current || document.body)}
+            {showMoreMenu && typeof document !== 'undefined' && createPortal(MenuContent, isRotated ? document.body : (containerRef.current || document.body))}
         </div>
     );
 }
