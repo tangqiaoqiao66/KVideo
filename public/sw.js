@@ -1,99 +1,102 @@
-const CACHE_NAME = 'video-cache-v2';
+const CACHE_VERSION = 'kvideo-shell-v2';
+const STATIC_CACHE_VERSION = 'kvideo-static-v2';
+const LEGACY_CACHE_PREFIXES = ['video-cache-', 'kvideo-shell-v1', 'kvideo-static-v1'];
+const OFFLINE_URL = '/offline.html';
+const SHELL_ASSETS = ['/', OFFLINE_URL, '/manifest.json', '/icon.png', '/placeholder-poster.svg'];
+
+function isSameOrigin(requestUrl) {
+  return new URL(requestUrl).origin === self.location.origin;
+}
+
+function isStaticAsset(pathname) {
+  return (
+    pathname.startsWith('/_next/static/') ||
+    pathname === '/manifest.json' ||
+    pathname === '/icon.png' ||
+    pathname === '/placeholder-poster.svg' ||
+    pathname.endsWith('.css') ||
+    pathname.endsWith('.js') ||
+    pathname.endsWith('.woff2') ||
+    pathname.endsWith('.svg')
+  );
+}
 
 self.addEventListener('install', (event) => {
-    self.skipWaiting();
+  event.waitUntil(
+    caches.open(CACHE_VERSION).then((cache) => cache.addAll(SHELL_ASSETS)).then(() => self.skipWaiting()),
+  );
 });
 
 self.addEventListener('activate', (event) => {
-    event.waitUntil(
-        caches.keys().then((cacheNames) => {
-            return Promise.all(
-                cacheNames.map((cacheName) => {
-                    if (cacheName !== CACHE_NAME) {
-                        return caches.delete(cacheName);
-                    }
-                })
-            );
-        }).then(() => self.clients.claim())
-    );
+  event.waitUntil(
+    caches.keys()
+      .then((cacheNames) =>
+        Promise.all(
+          cacheNames
+            .filter(
+              (cacheName) =>
+                cacheName !== CACHE_VERSION &&
+                cacheName !== STATIC_CACHE_VERSION &&
+                LEGACY_CACHE_PREFIXES.some((prefix) => cacheName.startsWith(prefix)),
+            )
+            .map((cacheName) => caches.delete(cacheName)),
+        ),
+      )
+      .then(() => self.clients.claim()),
+  );
 });
 
 self.addEventListener('fetch', (event) => {
-    const url = new URL(event.request.url);
+  const { request } = event;
+  if (request.method !== 'GET' || !isSameOrigin(request.url)) {
+    return;
+  }
 
-    // Skip proxy API routes - they handle their own caching and URL rewriting
-    if (url.pathname.startsWith('/api/proxy')) {
-        return; // Let the request pass through without Service Worker intervention
-    }
+  const url = new URL(request.url);
 
-    // Intercept HLS manifest files (.m3u8)
-    if (url.pathname.endsWith('.m3u8')) {
-        event.respondWith(
-            caches.open(CACHE_NAME).then((cache) => {
-                return cache.match(event.request, { ignoreSearch: true }).then((cachedResponse) => {
-                    // Always fetch fresh manifest but return cached while fetching
-                    const fetchPromise = fetch(event.request).then((networkResponse) => {
-                        // Check if network response is valid
-                        if (!networkResponse || networkResponse.status !== 200) {
-                            // Return the response as-is so client can see the error status
-                            if (networkResponse) return networkResponse;
-                            // If no response at all, throw to trigger catch block
-                            throw new Error('Network response was not ok');
-                        }
-                        cache.put(event.request, networkResponse.clone());
-                        return networkResponse;
-                    }).catch((err) => {
-                        console.error('[SW] Fetch failed for manifest:', err);
-                        // If network fails, return cached response if available
-                        if (cachedResponse) {
-                            return cachedResponse;
-                        }
-                        // If no cache, return a proper error Response instead of throwing
-                        // This prevents "Load failed" and lets the client handle it
-                        return new Response('Network error', {
-                            status: 503,
-                            statusText: 'Service Worker: Network Unavailable'
-                        });
-                    });
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          const responseClone = response.clone();
+          caches.open(CACHE_VERSION).then((cache) => {
+            cache.put('/', responseClone).catch(() => {});
+          });
+          return response;
+        })
+        .catch(async () => (await caches.match(request)) || (await caches.match('/')) || (await caches.match(OFFLINE_URL))),
+    );
+    return;
+  }
 
-                    // Return cache immediately if available, otherwise wait for network
-                    return cachedResponse || fetchPromise;
-                });
-            })
-        );
-    }
+  if (
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/_next/image') ||
+    url.pathname.startsWith('/player') ||
+    url.pathname.startsWith('/iptv')
+  ) {
+    return;
+  }
 
-    // Intercept video segment files (.ts)
-    if (url.pathname.endsWith('.ts')) {
-        event.respondWith(
-            caches.open(CACHE_NAME).then((cache) => {
-                return cache.match(event.request, { ignoreSearch: true }).then((cachedResponse) => {
-                    // Cache hit - return immediately for instant playback
-                    if (cachedResponse) {
-                        return cachedResponse;
-                    }
+  if (!isStaticAsset(url.pathname)) {
+    return;
+  }
 
-                    // Cache miss - fetch from network
-                    return fetch(event.request).then((response) => {
-                        // Only cache valid responses
-                        if (response && response.status === 200) {
-                            cache.put(event.request, response.clone());
-                            return response;
-                        }
-                        // If response is not valid (e.g. 403, 404), return it as is
-                        // so the browser/player can handle the error status
-                        return response;
-                    }).catch((error) => {
-                        console.error('[SW] Failed to fetch segment:', error);
-                        // Return a proper error Response instead of throwing
-                        // This prevents "Load failed" and lets the client handle it
-                        return new Response('Network error', {
-                            status: 503,
-                            statusText: 'Service Worker: Network Unavailable'
-                        });
-                    });
-                });
-            })
-        );
-    }
+  event.respondWith(
+    caches.match(request).then((cachedResponse) => {
+      const networkFetch = fetch(request)
+        .then((networkResponse) => {
+          if (networkResponse.ok) {
+            const responseClone = networkResponse.clone();
+            caches.open(STATIC_CACHE_VERSION).then((cache) => {
+              cache.put(request, responseClone).catch(() => {});
+            });
+          }
+          return networkResponse;
+        })
+        .catch(() => cachedResponse);
+
+      return cachedResponse || networkFetch;
+    }),
+  );
 });

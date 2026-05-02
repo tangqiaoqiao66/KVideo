@@ -1,0 +1,21 @@
+name = "kvideo"
+main = ".open-next/worker.js"
+compatibility_date = "2026-04-16"
+compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
+
+# Cloudflare Workers cannot use TCP Redis URLs from Docker Compose.
+# Configure AUTH_SECRET plus Upstash REST secrets for managed accounts:
+#   wrangler secret put AUTH_SECRET
+#   wrangler secret put UPSTASH_REDIS_REST_URL
+#   wrangler secret put UPSTASH_REDIS_REST_TOKEN
+#
+# Optional iOS/Safari HLS compatibility mode:
+#   set KVIDEO_MEDIA_PROXY_MODE=enabled
+# Public unauthenticated proxy access still requires KVIDEO_PUBLIC_RELAY_ENABLED=true.
+
+[assets]
+directory = ".open-next/assets"
+binding = "ASSETS"
+
+[images]
+binding = "IMAGES"

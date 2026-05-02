@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo } from 'react';
 
+type VolumeInteractionEvent = MouseEvent | React.MouseEvent<HTMLDivElement>;
+
+function getVolumeRatio(event: VolumeInteractionEvent, rect: DOMRect) {
+    return Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+}
+
 interface UseVolumeControlsProps {
     videoRef: React.RefObject<HTMLVideoElement | null>;
     volumeBarRef: React.RefObject<HTMLDivElement | null>;
@@ -26,11 +32,14 @@ export function useVolumeControls({
     const toggleMute = useCallback(() => {
         if (!videoRef.current) return;
         if (isMuted) {
-            videoRef.current.volume = volume;
+            videoRef.current.muted = false;
+            videoRef.current.volume = volume || 0.5;
             setIsMuted(false);
+            localStorage.setItem('kvideo-muted', 'false');
         } else {
-            videoRef.current.volume = 0;
+            videoRef.current.muted = true;
             setIsMuted(true);
+            localStorage.setItem('kvideo-muted', 'true');
         }
     }, [videoRef, isMuted, volume, setIsMuted]);
 
@@ -44,19 +53,22 @@ export function useVolumeControls({
         }, 1000);
     }, [setShowVolumeBar, volumeBarTimeoutRef]);
 
-    const handleVolumeChange = useCallback((e: any) => {
+    const handleVolumeChange = useCallback((event: VolumeInteractionEvent) => {
         if (!videoRef.current || !volumeBarRef.current) return;
         const rect = volumeBarRef.current.getBoundingClientRect();
-        const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        const pos = getVolumeRatio(event, rect);
         setVolume(pos);
         videoRef.current.volume = pos;
+        videoRef.current.muted = pos === 0;
         setIsMuted(pos === 0);
+        localStorage.setItem('kvideo-volume', String(pos));
+        localStorage.setItem('kvideo-muted', String(pos === 0));
     }, [videoRef, volumeBarRef, setVolume, setIsMuted]);
 
-    const handleVolumeMouseDown = useCallback((e: any) => {
-        e.preventDefault();
+    const handleVolumeMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+        event.preventDefault();
         isDraggingVolumeRef.current = true;
-        handleVolumeChange(e);
+        handleVolumeChange(event);
     }, [isDraggingVolumeRef, handleVolumeChange]);
 
     useEffect(() => {
@@ -64,10 +76,13 @@ export function useVolumeControls({
             if (!isDraggingVolumeRef.current || !volumeBarRef.current || !videoRef.current) return;
             e.preventDefault();
             const rect = volumeBarRef.current.getBoundingClientRect();
-            const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            const pos = getVolumeRatio(e, rect);
             setVolume(pos);
             videoRef.current.volume = pos;
+            videoRef.current.muted = pos === 0;
             setIsMuted(pos === 0);
+            localStorage.setItem('kvideo-volume', String(pos));
+            localStorage.setItem('kvideo-muted', String(pos === 0));
         };
 
         const handleMouseUp = () => {

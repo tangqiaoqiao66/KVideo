@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useRef, useCallback, useMemo, memo, useEffect } from 'react';
+import { useState, useRef, useCallback, useMemo, memo, useEffect, useSyncExternalStore } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { VideoCard } from './VideoCard';
 import { VideoGroupCard, GroupedVideo } from './VideoGroupCard';
 import { settingsStore } from '@/lib/store/settings-store';
 import { Video } from '@/lib/types';
+import { useResolutionProbe } from '@/lib/hooks/useResolutionProbe';
 
 interface VideoGridProps {
   videos: Video[];
@@ -22,16 +23,18 @@ export const VideoGrid = memo(function VideoGrid({
 }: VideoGridProps) {
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(24);
-  const [displayMode, setDisplayMode] = useState<'normal' | 'grouped'>('normal');
   const gridRef = useRef<HTMLDivElement>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const displayMode = useSyncExternalStore(
+    settingsStore.subscribe,
+    () => settingsStore.getSettings().searchDisplayMode,
+    () => settingsStore.getSettings().searchDisplayMode
+  );
 
-  // Load display mode from settings
   useEffect(() => {
     const settings = settingsStore.getSettings();
-    setDisplayMode(settings.searchDisplayMode);
 
     // Initial load: Check for saved scroll position to ensure we render enough items
     const params = searchParams.toString();
@@ -56,22 +59,24 @@ export const VideoGrid = memo(function VideoGrid({
         const neededCount = Math.min(videos.length, estimatedRowsNeeded * itemsPerRow);
 
         if (neededCount > 24) {
-          setVisibleCount(Math.ceil(neededCount / 24) * 24);
+          const nextVisibleCount = Math.ceil(neededCount / 24) * 24;
+          const frameId = window.requestAnimationFrame(() => {
+            setVisibleCount(nextVisibleCount);
+          });
+          return () => window.cancelAnimationFrame(frameId);
         }
       }
     }
-
-    const unsubscribe = settingsStore.subscribe(() => {
-      const newSettings = settingsStore.getSettings();
-      setDisplayMode(newSettings.searchDisplayMode);
-    });
-
-    return () => unsubscribe();
   }, [pathname, searchParams, videos.length]);
 
-  if (videos.length === 0) {
-    return null;
-  }
+  // Build stable list of videos to probe for resolution
+  const videosToProbe = useMemo(() => {
+    if (displayMode === 'grouped') {
+      // For grouped mode, will probe after grouping
+      return [];
+    }
+    return videos.map(v => ({ id: String(v.vod_id), source: v.source }));
+  }, [videos, displayMode]);
 
   // Group videos by name when in grouped mode
   const groupedVideos = useMemo<GroupedVideo[]>(() => {
@@ -165,7 +170,21 @@ export const VideoGrid = memo(function VideoGrid({
     }));
   }, [groupedVideos, displayMode]);
 
+  // Build probe list for grouped mode (probe representative of each group)
+  const groupedProbeList = useMemo(() => {
+    if (displayMode !== 'grouped') return [];
+    return groupedVideos.map(g => ({ id: String(g.representative.vod_id), source: g.representative.source }));
+  }, [groupedVideos, displayMode]);
+
+  // Probe resolutions
+  const probeList = displayMode === 'grouped' ? groupedProbeList : videosToProbe;
+  const { resolutions, isProbing } = useResolutionProbe(probeList);
+
   const totalItems = displayMode === 'grouped' ? groupItems.length : videoItems.length;
+
+  if (videos.length === 0) {
+    return null;
+  }
 
   return (
     <>
@@ -188,6 +207,8 @@ export const VideoGrid = memo(function VideoGrid({
                 onCardClick={handleCardClick}
                 isPremium={isPremium}
                 latencies={latencies}
+                resolution={resolutions[`${group.representative.source}:${group.representative.vod_id}`]}
+                isProbing={isProbing && !resolutions[`${group.representative.source}:${group.representative.vod_id}`]}
               />
             );
           })
@@ -205,6 +226,8 @@ export const VideoGrid = memo(function VideoGrid({
                 onCardClick={handleCardClick}
                 isPremium={isPremium}
                 latencies={latencies}
+                resolution={resolutions[`${video.source}:${video.vod_id}`]}
+                isProbing={isProbing && !resolutions[`${video.source}:${video.vod_id}`]}
               />
             );
           })
@@ -222,4 +245,3 @@ export const VideoGrid = memo(function VideoGrid({
     </>
   );
 });
-

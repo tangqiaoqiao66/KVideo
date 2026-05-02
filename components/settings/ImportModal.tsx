@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { ImportModalTabs } from './import/ImportModalTabs';
 import { FileImportTab } from './import/FileImportTab';
 import { LinkImportTab } from './import/LinkImportTab';
 import { SubscriptionImportTab } from './import/SubscriptionImportTab';
+import { JsonImportTab } from './import/JsonImportTab';
 import type { ImportResult } from '@/lib/utils/source-import-utils';
 import type { SourceSubscription } from '@/lib/types';
 import { ModalBackdrop } from '@/components/ui/ModalBackdrop';
@@ -33,27 +34,39 @@ export function ImportModal({
   onRemoveSubscription,
   onRefreshSubscription
 }: ImportModalProps) {
-  const [activeTab, setActiveTab] = useState<'file' | 'link' | 'subscription'>('file');
-
-  // Reset tab on open
-  useEffect(() => {
-    if (isOpen) {
-      setActiveTab('file');
-    }
-  }, [isOpen]);
-
   if (!isOpen) return null;
 
   return (
+    <ImportModalContent
+      onClose={onClose}
+      onImportFile={onImportFile}
+      onImportLink={onImportLink}
+      subscriptions={subscriptions}
+      onAddSubscription={onAddSubscription}
+      onRemoveSubscription={onRemoveSubscription}
+      onRefreshSubscription={onRefreshSubscription}
+    />
+  );
+}
+
+function ImportModalContent({
+  onClose,
+  onImportFile,
+  onImportLink,
+  subscriptions,
+  onAddSubscription,
+  onRemoveSubscription,
+  onRefreshSubscription
+}: Omit<ImportModalProps, 'isOpen'>) {
+  const [activeTab, setActiveTab] = useState<'file' | 'link' | 'subscription' | 'json'>('file');
+
+  return (
     <>
-      <ModalBackdrop isOpen={isOpen} onClose={onClose} />
+      <ModalBackdrop isOpen={true} onClose={onClose} />
 
       {/* Modal */}
       <div
-        className={`fixed top-1/2 left-1/2 z-[9999] w-[90%] max-w-md -translate-x-1/2 transition-all duration-300 ${isOpen
-            ? 'opacity-100 -translate-y-1/2 scale-100'
-            : 'opacity-0 -translate-y-[40%] scale-95 pointer-events-none'
-          }`}
+        className="fixed top-1/2 left-1/2 z-[9999] w-[90%] max-w-md -translate-x-1/2 transition-all duration-300 opacity-100 -translate-y-1/2 scale-100"
       >
         <div className="bg-[var(--glass-bg)] backdrop-blur-xl border border-[var(--glass-border)] rounded-[var(--radius-2xl)] shadow-[var(--shadow-md)] p-6 flex flex-col max-h-[85vh]">
           <div className="flex items-center justify-between mb-6 shrink-0">
@@ -89,6 +102,10 @@ export function ImportModal({
                 onRemove={onRemoveSubscription}
                 onRefresh={onRefreshSubscription}
               />
+            )}
+
+            {activeTab === 'json' && (
+              <JsonImportTab />
             )}
           </div>
         </div>

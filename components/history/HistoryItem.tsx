@@ -3,11 +3,12 @@
  * Displays video thumbnail, title, episode, progress, and delete button
  */
 
-import Image from 'next/image';
 import { Icons } from '@/components/ui/Icon';
 import { formatTime, formatDate } from '@/lib/utils/format-utils';
 import { PosterImage } from './PosterImage';
 import { FavoriteButton } from '@/components/favorites/FavoriteButton';
+import { getSourceName } from '@/lib/utils/source-names';
+import { storeGroupedSources } from '@/lib/utils/grouped-sources-cache';
 import type { VideoHistoryItem } from '@/lib/types';
 
 interface HistoryItemProps {
@@ -24,13 +25,26 @@ export function HistoryItem({ item, onRemove, isPremium = false }: HistoryItemPr
       title: item.title,
       episode: item.episodeIndex.toString(),
     });
+    // Store sourceMap in sessionStorage to avoid long URLs
+    if (item.sourceMap && Object.keys(item.sourceMap).length > 1) {
+      const groupData = Object.entries(item.sourceMap).map(([sourceName, videoId]) => ({
+        id: videoId,
+        source: sourceName,
+        sourceName: getSourceName(sourceName),
+        pic: item.poster,
+      }));
+      const cacheKey = storeGroupedSources(groupData);
+      if (cacheKey) {
+        params.set('gs', cacheKey);
+      }
+    }
     if (isPremium) {
       params.set('premium', '1');
     }
     return `/player?${params.toString()}`;
   };
 
-  const handleClick = (event: React.MouseEvent) => {
+  const handleClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
     // Middle mouse or Ctrl/Cmd+click opens in new tab
     if (event.button === 1 || event.ctrlKey || event.metaKey) {
       event.preventDefault();
@@ -50,12 +64,12 @@ export function HistoryItem({ item, onRemove, isPremium = false }: HistoryItemPr
         href={getVideoUrl()}
         onClick={(e) => {
           e.preventDefault();
-          handleClick(e as any);
+          handleClick(e);
           if (!e.ctrlKey && !e.metaKey) {
             window.location.href = getVideoUrl();
           }
         }}
-        onAuxClick={(e) => handleClick(e as any)}
+        onAuxClick={handleClick}
         className="block"
       >
         <div className="flex gap-3">
@@ -87,6 +101,7 @@ export function HistoryItem({ item, onRemove, isPremium = false }: HistoryItemPr
               title={item.title}
               poster={item.poster}
               remarks={episodeText}
+              sourceMap={item.sourceMap}
               size={14}
               className="!p-1.5 !bg-transparent !border-0 !shadow-none hover:!bg-[var(--glass-bg)]"
               showTooltip={false}

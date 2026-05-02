@@ -4,34 +4,58 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import type { VideoSource } from '@/lib/types';
 
 interface UseAddSourceFormProps {
-    isOpen: boolean;
     existingIds: string[];
     onAdd: (source: VideoSource) => void;
     onClose: () => void;
     initialValues?: VideoSource | null;
 }
 
-export function useAddSourceForm({ isOpen, existingIds, onAdd, onClose, initialValues }: UseAddSourceFormProps) {
-    const [name, setName] = useState('');
-    const [url, setUrl] = useState('');
+function generateIdFromName(name: string): string {
+    const slug = name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+    return slug || `custom-${Date.now().toString(36)}`;
+}
+
+function getInitialFormState(initialValues?: VideoSource | null) {
+    if (initialValues) {
+        return {
+            name: initialValues.name,
+            customId: initialValues.id,
+            idManuallyEdited: true,
+            url: initialValues.baseUrl,
+        };
+    }
+
+    return {
+        name: '',
+        customId: '',
+        idManuallyEdited: false,
+        url: '',
+    };
+}
+
+export function useAddSourceForm({ existingIds, onAdd, onClose, initialValues }: UseAddSourceFormProps) {
+    const initialFormState = getInitialFormState(initialValues);
+    const [name, setName] = useState(initialFormState.name);
+    const [customId, setCustomId] = useState(initialFormState.customId);
+    const [idManuallyEdited, setIdManuallyEdited] = useState(initialFormState.idManuallyEdited);
+    const [url, setUrl] = useState(initialFormState.url);
     const [error, setError] = useState('');
 
-    useEffect(() => {
-        if (isOpen) {
-            if (initialValues) {
-                setName(initialValues.name);
-                setUrl(initialValues.baseUrl);
-            } else {
-                setName('');
-                setUrl('');
-            }
-            setError('');
+    const handleNameChange = (newName: string) => {
+        setName(newName);
+        if (!idManuallyEdited && !initialValues) {
+            setCustomId(generateIdFromName(newName));
         }
-    }, [isOpen, initialValues]);
+    };
+
+    const handleIdChange = (newId: string) => {
+        setIdManuallyEdited(true);
+        setCustomId(newId);
+    };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -49,18 +73,11 @@ export function useAddSourceForm({ isOpen, existingIds, onAdd, onClose, initialV
             return;
         }
 
-        let id = initialValues?.id;
+        const id = customId.trim() || generateIdFromName(name);
 
-        // Only generate new ID if not editing or if name changed (optional, maybe keep ID stable?)
-        // For now, let's keep ID stable if editing, unless we want to allow re-generating ID.
-        // But if we re-generate ID, we lose history/preferences for that ID.
-        // So better to keep ID if editing.
-        if (!id) {
-            id = name.toLowerCase().replace(/[^a-z0-9]/g, '-');
-            if (existingIds.includes(id)) {
-                setError('此源名称已存在');
-                return;
-            }
+        if (!initialValues && existingIds.includes(id)) {
+            setError('此源 ID 已存在，请修改源 ID');
+            return;
         }
 
         const newSource: VideoSource = {
@@ -79,10 +96,13 @@ export function useAddSourceForm({ isOpen, existingIds, onAdd, onClose, initialV
 
     return {
         name,
-        setName,
+        setName: handleNameChange,
+        customId,
+        setCustomId: handleIdChange,
         url,
         setUrl,
         error,
         handleSubmit,
+        isEditing: !!initialValues,
     };
 }

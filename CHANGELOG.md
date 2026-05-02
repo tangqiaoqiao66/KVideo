@@ -1,0 +1,49 @@
+# Changelog
+
+## 4.9.5 - 2026-05-02
+
+- 新增 `KVIDEO_MEDIA_PROXY_MODE` 运行时开关：Vercel / Cloudflare 默认仍保持受限托管模式，但部署者可显式设置 `enabled`，让播放器的“智能重试 / 总是代理”策略在 iOS/Safari HLS 直连失败时生效。
+- 播放器设置里的代理选项调整为“多环境播放策略”，文案明确覆盖桌面、移动端、iOS Safari 与托管部署差异。
+- Docker Compose、`.env.example`、`wrangler.toml` 和 README 补齐媒体代理、公共中继、Upstash Redis 与托管环境边界说明。
+- 新增运行时能力回归测试，覆盖托管环境默认禁用代理、显式启用代理，以及自托管强制直连的行为。
+- Redis 客户端测试补充 Vercel 缺少 Upstash Token 时的降级断言，避免 `/api/user/sync` 因不完整 Redis 配置再次返回 500。
+
+## 4.9.4 - 2026-05-02
+
+- Docker Compose 新增持久化 Redis 服务，默认通过 `REDIS_URL=redis://redis:6379/0` 启用自托管托管账户存储。
+- 服务端 Redis 层新增普通 `redis://` / `rediss://` TCP Redis 支持；Cloudflare / Vercel 等受限托管环境仍使用 Upstash REST 凭据。
+- 新增 `.env.example`，补齐 Docker 托管账户、Redis、Upstash 和中继相关环境变量说明。
+- 会话 Cookie 的 `Secure` 标记改为按请求协议 / `x-forwarded-proto` 自动决定，并新增 `AUTH_COOKIE_SECURE` 强制开关，避免 HTTP Docker 直连登录后浏览器丢弃会话。
+- README、Cloudflare 注释和部署文档补齐 Docker Redis 与 Cloudflare Upstash 的边界说明。
+- 新增 TCP Redis 客户端回归测试，覆盖 JSON 存取、计数器、TTL、删除和缺失键行为。
+
+## 4.9.3 - 2026-04-15
+
+- 新增 Redis 托管账户模式：支持用户名密码登录、超级管理员账户 CRUD、权限编辑和密码重置。
+- 认证改为服务端签名 HTTP-only 会话 Cookie，`/api/user/config` 与 `/api/user/sync` 不再信任客户端自报 `profileId`。
+- 播放页线路列表补齐剩余问题：分辨率探测会按当前集数探测并缓存，打开线路列表时会自动定位当前线路，必要时自动展开隐藏项。
+- 仓库补充了与新认证和线路列表逻辑对应的单元测试，并修正了本地 `eslint` 版本与 Next.js 规则链不兼容的问题。
+
+## 4.9.2 - 2026-04-12
+
+- 设置页首次自动检查更新时不再让“检查更新”按钮自己持续转圈。
+- 移除会反复闪烁的“正在整理结果”提示，避免用户误以为页面异常。
+- 手动点击“检查更新”时才显示按钮转圈，状态反馈与用户操作保持一致。
+
+## 4.9.1 - 2026-04-12
+
+- 移除仅支持 Node.js 的 `/api/site-icon` 路由，避免 `next-on-pages` 因非 Edge 路由中止构建。
+- 站点图标改为由服务端布局直接解析，导航栏和播放器页继续显示运行时配置的图标。
+- PWA manifest 回退为静态图标，确保 Cloudflare Pages、Docker 和本地构建链路一致可用。
+
+## 4.9.0 - 2026-04-12
+
+- 设置页新增“版本与更新”卡片，直接显示当前版本、最近更新内容和检查结果。
+- 新增手动“检查更新”按钮，会对比 GitHub `main` 分支上的最新版本元数据。
+- 仓库新增更新日志文件，方便在项目内查看当前版本和更新说明。
+
+## 4.8.3 - 2026-04-12
+
+- 站点图标改为支持运行时配置，Docker 镜像无需重新构建即可替换。
+- 扩展播放器默认视口，减少桌面端播放器黑边。
+- 修复 Android WebView 中 Cast SDK 判定以及全屏和画中画相关兼容性问题。

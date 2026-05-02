@@ -9,22 +9,37 @@ import { createPortal } from 'react-dom';
 
 interface DesktopMoreMenuProps {
     showMoreMenu: boolean;
+    isPremium?: boolean;
     isProxied?: boolean;
     onToggleMoreMenu: () => void;
     onMouseEnter: () => void;
     onMouseLeave: () => void;
     onCopyLink: (type?: 'original' | 'proxy') => void;
+    webFullscreenSize: 'full' | 'large' | 'focused';
+    onCycleWebFullscreenSize: () => void;
     containerRef: React.RefObject<HTMLDivElement | null>;
     isRotated?: boolean;
 }
 
+interface MenuPositionState {
+    top: number;
+    left: number;
+    maxHeight: string;
+    openUpward: boolean;
+    align: 'left' | 'right';
+    triggerWidth: number;
+}
+
 export function DesktopMoreMenu({
     showMoreMenu,
+    isPremium = false,
     isProxied = false,
     onToggleMoreMenu,
     onMouseEnter,
     onMouseLeave,
     onCopyLink,
+    webFullscreenSize,
+    onCycleWebFullscreenSize,
     containerRef,
     isRotated = false
 }: DesktopMoreMenuProps) {
@@ -47,18 +62,40 @@ export function DesktopMoreMenu({
         setAdFilterMode,
         fullscreenType,
         setFullscreenType,
-    } = usePlayerSettings();
+        danmakuEnabled,
+        setDanmakuEnabled,
+        danmakuApiUrl,
+        danmakuOpacity,
+        setDanmakuOpacity,
+        danmakuFontSize,
+        setDanmakuFontSize,
+        danmakuDisplayArea,
+        setDanmakuDisplayArea,
+    } = usePlayerSettings(isPremium);
 
     const buttonRef = React.useRef<HTMLButtonElement>(null);
     const menuRef = React.useRef<HTMLDivElement>(null);
-    const [menuPosition, setMenuPosition] = React.useState({ top: 0, left: 0, maxHeight: 'none', openUpward: false, align: 'right' as 'left' | 'right' });
+    const [menuPosition, setMenuPosition] = React.useState<MenuPositionState>({
+        top: 0,
+        left: 0,
+        maxHeight: 'none',
+        openUpward: false,
+        align: 'right',
+        triggerWidth: 0,
+    });
     const [isAdFilterOpen, setAdFilterOpen] = React.useState(false);
+    const [portalTarget, setPortalTarget] = React.useState<HTMLElement | null>(null);
 
     const AD_FILTER_LABELS: Record<string, string> = {
         off: '关闭',
         keyword: '关键词',
         heuristic: '智能(Beta)',
         aggressive: '激进'
+    };
+    const WEB_FULLSCREEN_SIZE_LABELS: Record<'full' | 'large' | 'focused', string> = {
+        full: '铺满窗口',
+        large: '大窗模式',
+        focused: '聚焦影院',
     };
 
     const [isFullscreen, setIsFullscreen] = React.useState(false);
@@ -80,13 +117,24 @@ export function DesktopMoreMenu({
         };
     }, [containerRef]);
 
+    React.useEffect(() => {
+        if (typeof document === 'undefined') {
+            return;
+        }
+
+        const nextPortalTarget = ((isRotated || isFullscreen) && containerRef.current)
+            ? containerRef.current
+            : document.body;
+        setPortalTarget(nextPortalTarget);
+    }, [containerRef, isRotated, isFullscreen, showMoreMenu]);
+
     // Dual Positioning Strategy
     const calculateMenuPosition = React.useCallback(() => {
         if (!buttonRef.current || !containerRef.current) return;
 
-        if (!isRotated) {
-            // Normal Mode: Non-rotated (Portrait on Mobile)
-            // Use Viewport Coordinates but position relative to button (User Request: "Below button")
+        if (!isRotated && !isFullscreen) {
+            // Normal Mode: Non-rotated, non-fullscreen
+            // Use Viewport Coordinates but position relative to button
             // And use Body Portal to escape container clipping
             const buttonRect = buttonRef.current.getBoundingClientRect();
             const viewportHeight = window.innerHeight;
@@ -125,7 +173,50 @@ export function DesktopMoreMenu({
                 left: left,
                 maxHeight: `${maxHeight}px`,
                 openUpward: openUpward,
-                align: align
+                align: align,
+                triggerWidth: buttonRect.width,
+            });
+        } else if (isFullscreen && !isRotated) {
+            // Fullscreen Mode (not rotated): Use container-relative coordinates
+            // Portal goes to containerRef to stay visible within fullscreen element
+            let top = 0;
+            let left = 0;
+            let el: HTMLElement | null = buttonRef.current;
+
+            while (el && el !== containerRef.current) {
+                top += el.offsetTop;
+                left += el.offsetLeft;
+                el = el.offsetParent as HTMLElement;
+            }
+
+            const buttonHeight = buttonRef.current.offsetHeight;
+            const buttonWidth = buttonRef.current.offsetWidth;
+            const containerWidth = containerRef.current.offsetWidth;
+            const containerHeight = containerRef.current.offsetHeight;
+
+            const spaceBelow = containerHeight - (top + buttonHeight) - 10;
+            const spaceAbove = top - 10;
+
+            const estimatedMenuHeight = 450;
+            const actualMenuHeight = menuRef.current?.offsetHeight || estimatedMenuHeight;
+
+            const openUpward = spaceBelow < Math.min(actualMenuHeight, 300) && spaceAbove > spaceBelow;
+            const maxHeight = openUpward
+                ? Math.min(spaceAbove, actualMenuHeight)
+                : Math.min(spaceBelow, containerHeight * 0.7);
+
+            const isLeftHalf = left < containerWidth / 2;
+            const align = isLeftHalf ? 'left' : 'right';
+
+            setMenuPosition({
+                top: openUpward
+                    ? top - 10
+                    : top + buttonHeight + 10,
+                left: isLeftHalf ? left : left + buttonWidth,
+                maxHeight: `${maxHeight}px`,
+                openUpward: openUpward,
+                align: align,
+                triggerWidth: buttonWidth,
             });
         } else {
             // Rotated Mode: Use Container Coordinates (offset loop) and Portal to Container
@@ -173,10 +264,11 @@ export function DesktopMoreMenu({
                 left: left, // Fixed vertical container coordinate
                 maxHeight: `${maxHeight}px`,
                 openUpward: openUpward,
-                align: align
+                align: align,
+                triggerWidth: buttonWidth,
             });
         }
-    }, [containerRef, isRotated]);
+    }, [containerRef, isRotated, isFullscreen]);
 
 
 
@@ -222,7 +314,7 @@ export function DesktopMoreMenu({
                         right: `calc(100% - ${menuPosition.left}px + 10px)`,
                         left: 'auto'
                     } : {
-                        left: `${menuPosition.left + buttonRef.current?.offsetWidth! + 10}px`,
+                        left: `${menuPosition.left + menuPosition.triggerWidth + 10}px`,
                         right: 'auto'
                     }),
 
@@ -282,14 +374,32 @@ export function DesktopMoreMenu({
                 <div className="relative">
                     <button
                         onClick={() => {
-                            setFullscreenType(fullscreenType === 'native' ? 'window' : 'native');
+                            if (fullscreenType === 'auto') setFullscreenType('native');
+                            else if (fullscreenType === 'native') setFullscreenType('window');
+                            else setFullscreenType('auto');
                         }}
                         className={`flex items-center gap-1 bg-[var(--glass-bg)] border border-[var(--glass-border)] text-[var(--text-color)] rounded-[var(--radius-2xl)] outline-none hover:border-[var(--accent-color)] hover:bg-[color-mix(in_srgb,var(--accent-color)_5%,transparent)] transition-all cursor-pointer whitespace-nowrap ${isRotated ? 'px-1.5 py-0.5 text-[9px]' : 'px-2 sm:px-2.5 py-1 sm:py-1.5 text-[10px] sm:text-xs'}`}
                     >
-                        <span>{fullscreenType === 'native' ? '系统全屏' : '网页全屏'}</span>
+                        <span>
+                            {fullscreenType === 'auto' ? '自动 (Auto)' : fullscreenType === 'native' ? '系统全屏' : '网页全屏'}
+                        </span>
                         <Icons.Maximize size={isRotated ? 10 : 12} className="text-[var(--text-color-secondary)]" />
                     </button>
                 </div>
+            </div>
+
+            <div className={`${isRotated ? 'px-2 py-1.5' : 'px-3 py-2 sm:px-4 sm:py-2.5'} flex items-center justify-between gap-4`}>
+                <div className={`flex items-center gap-2 text-[var(--text-color)] ${isRotated ? 'text-[11px]' : 'text-xs sm:text-sm'}`}>
+                    <Icons.Target size={isRotated ? 14 : 16} className="sm:w-[18px] sm:h-[18px]" />
+                    <span>网页全屏尺寸</span>
+                </div>
+                <button
+                    onClick={onCycleWebFullscreenSize}
+                    className={`flex items-center gap-1 bg-[var(--glass-bg)] border border-[var(--glass-border)] text-[var(--text-color)] rounded-[var(--radius-2xl)] outline-none hover:border-[var(--accent-color)] hover:bg-[color-mix(in_srgb,var(--accent-color)_5%,transparent)] transition-all cursor-pointer whitespace-nowrap ${isRotated ? 'px-1.5 py-0.5 text-[9px]' : 'px-2 sm:px-2.5 py-1 sm:py-1.5 text-[10px] sm:text-xs'}`}
+                >
+                    <span>{WEB_FULLSCREEN_SIZE_LABELS[webFullscreenSize]}</span>
+                    <Icons.ChevronDown size={isRotated ? 10 : 12} className="text-[var(--text-color-secondary)]" />
+                </button>
             </div>
 
             {/* Show Mode Indicator Switch */}
@@ -353,6 +463,102 @@ export function DesktopMoreMenu({
                     )}
                 </div>
             </div>
+
+            {/* Divider */}
+            <div className="h-px bg-[var(--glass-border)] my-1.5 sm:my-2" />
+
+            {/* Danmaku Toggle */}
+            <div className={`${isRotated ? 'px-2 py-1.5' : 'px-3 py-2 sm:px-4 sm:py-2.5'} flex items-center justify-between gap-4`}>
+                <div className={`flex items-center gap-2 ${!danmakuApiUrl ? 'text-[var(--text-color-secondary)]' : 'text-[var(--text-color)]'} ${isRotated ? 'text-[11px]' : 'text-xs sm:text-sm'}`}>
+                    <Icons.Danmaku size={isRotated ? 14 : 16} className="sm:w-[18px] sm:h-[18px]" />
+                    <span>弹幕</span>
+                    {!danmakuApiUrl && (
+                        <span className={`${isRotated ? 'text-[9px]' : 'text-[10px] sm:text-xs'} text-[var(--text-color-secondary)]`}>(未配置)</span>
+                    )}
+                </div>
+                <button
+                    onClick={() => danmakuApiUrl && setDanmakuEnabled(!danmakuEnabled)}
+                    disabled={!danmakuApiUrl}
+                    className={`relative rounded-full transition-all duration-300 flex-shrink-0 border border-white/20 ${!danmakuApiUrl
+                        ? 'bg-white/5 opacity-40 cursor-not-allowed'
+                        : danmakuEnabled
+                            ? 'bg-[var(--accent-color)] shadow-[0_0_15px_rgba(var(--accent-color-rgb),0.6)] cursor-pointer'
+                            : 'bg-white/5 hover:bg-white/10 cursor-pointer'
+                        } ${isRotated ? 'w-6 h-3.5' : 'w-8 h-[18px] sm:w-10 sm:h-6'}`}
+                    aria-checked={danmakuEnabled}
+                    role="switch"
+                >
+                    <span
+                        className={`absolute top-0.5 left-0.5 bg-white rounded-full transition-transform duration-300 shadow-[0_2px_4px_rgba(0,0,0,0.4)] ${isRotated ? 'w-2.5 h-2.5' : 'w-3.5 h-3.5 sm:w-4.5 sm:h-4.5'} ${danmakuEnabled && danmakuApiUrl ? (isRotated ? 'translate-x-2.5' : 'translate-x-3.5 sm:translate-x-4.5') : 'translate-x-0'
+                            }`}
+                    />
+                </button>
+            </div>
+
+            {/* Danmaku Sub-Settings (shown when enabled and configured) */}
+            {danmakuEnabled && danmakuApiUrl && (
+                <div className={`${isRotated ? 'px-2 pb-1.5' : 'px-3 pb-2 sm:px-4 sm:pb-2.5'} space-y-2.5`}>
+                    {/* Opacity Slider */}
+                    <div className={`${isRotated ? 'ml-4' : 'ml-6 sm:ml-7'}`}>
+                        <div className={`flex items-center justify-between mb-1 ${isRotated ? 'text-[9px]' : 'text-[10px] sm:text-xs'} text-[var(--text-color-secondary)]`}>
+                            <span>透明度</span>
+                            <span>{Math.round(danmakuOpacity * 100)}%</span>
+                        </div>
+                        <input
+                            type="range"
+                            min="10"
+                            max="100"
+                            value={Math.round(danmakuOpacity * 100)}
+                            onChange={(e) => setDanmakuOpacity(parseInt(e.target.value) / 100)}
+                            className={`w-full accent-[var(--accent-color)] ${isRotated ? 'h-1' : 'h-1.5'}`}
+                            onClick={(e) => e.stopPropagation()}
+                        />
+                    </div>
+
+                    {/* Font Size Buttons */}
+                    <div className={`${isRotated ? 'ml-4' : 'ml-6 sm:ml-7'}`}>
+                        <div className={`mb-1 ${isRotated ? 'text-[9px]' : 'text-[10px] sm:text-xs'} text-[var(--text-color-secondary)]`}>字号</div>
+                        <div className="flex gap-1 flex-wrap">
+                            {[14, 18, 20, 24, 28].map((size) => (
+                                <button
+                                    key={size}
+                                    onClick={() => setDanmakuFontSize(size)}
+                                    className={`rounded-[var(--radius-2xl)] border font-medium transition-all duration-200 cursor-pointer ${isRotated ? 'px-1.5 py-0.5 text-[9px]' : 'px-2 py-0.5 text-[10px] sm:text-xs'} ${danmakuFontSize === size
+                                        ? 'bg-[var(--accent-color)] border-[var(--accent-color)] text-white'
+                                        : 'bg-[var(--glass-bg)] border-[var(--glass-border)] text-[var(--text-color)] hover:bg-[color-mix(in_srgb,var(--accent-color)_10%,transparent)]'
+                                        }`}
+                                >
+                                    {size}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Display Area Buttons */}
+                    <div className={`${isRotated ? 'ml-4' : 'ml-6 sm:ml-7'}`}>
+                        <div className={`mb-1 ${isRotated ? 'text-[9px]' : 'text-[10px] sm:text-xs'} text-[var(--text-color-secondary)]`}>显示区域</div>
+                        <div className="flex gap-1 flex-wrap">
+                            {([
+                                { value: 0.25, label: '1/4屏' },
+                                { value: 0.5, label: '半屏' },
+                                { value: 0.75, label: '3/4屏' },
+                                { value: 1.0, label: '全屏' },
+                            ] as const).map(({ value, label }) => (
+                                <button
+                                    key={value}
+                                    onClick={() => setDanmakuDisplayArea(value)}
+                                    className={`rounded-[var(--radius-2xl)] border font-medium transition-all duration-200 cursor-pointer ${isRotated ? 'px-1.5 py-0.5 text-[9px]' : 'px-2 py-0.5 text-[10px] sm:text-xs'} ${danmakuDisplayArea === value
+                                        ? 'bg-[var(--accent-color)] border-[var(--accent-color)] text-white'
+                                        : 'bg-[var(--glass-bg)] border-[var(--glass-border)] text-[var(--text-color)] hover:bg-[color-mix(in_srgb,var(--accent-color)_10%,transparent)]'
+                                        }`}
+                                >
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Auto Next Episode Switch */}
             <div className={`${isRotated ? 'px-2 py-1.5' : 'px-3 py-2 sm:px-4 sm:py-2.5'} flex items-center justify-between gap-4`}>
@@ -474,7 +680,7 @@ export function DesktopMoreMenu({
 
             {/* More Menu Dropdown (Portal) */}
             {/* More Menu Dropdown (Portal) */}
-            {showMoreMenu && typeof document !== 'undefined' && createPortal(MenuContent, (isRotated && containerRef.current) ? containerRef.current : document.body)}
+            {showMoreMenu && portalTarget && createPortal(MenuContent, portalTarget)}
         </div>
     );
 }
